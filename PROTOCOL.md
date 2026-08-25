@@ -130,6 +130,7 @@ and `RESEND`.
 |---|---|
 | `LIST` | `<LIST>`, then `name bytes` per line, then `<ENDLIST>` |
 | `STATUS` | `<STATUS uptime=… files=… frames=… pruned=… free=… ring=…>` |
+| `CLOSE` | `<CLOSED name rows>` — rolls the current file so it can be resent |
 | `RESEND <name>` | a normal frame, or `<ERR …>` |
 | anything else | `<ERR unknown …>` |
 
@@ -138,7 +139,8 @@ Errors:
 | Reply | Cause |
 |---|---|
 | `<ERR not found NAME>` | no such file, or the name is not a data file |
-| `<ERR file open NAME>` | that file is currently being written |
+| `<ERR file open NAME>` | that file is currently being written — send `CLOSE` first |
+| `<ERR file empty>` | `CLOSE` with no rows written yet |
 | `<ERR cannot open NAME>` | filesystem refused the read |
 | `<ERR no filesystem>` | payload is running `STORAGE_SERIAL` |
 

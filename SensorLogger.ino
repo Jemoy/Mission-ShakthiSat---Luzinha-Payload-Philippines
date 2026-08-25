@@ -760,6 +760,35 @@ static void cmdResend(const char *name)
 #endif
 }
 
+/* Close the current file and start a new one, without waiting for the
+ * period to elapse. The open file cannot be RESENT - its length changes
+ * while streaming - so this is how you retrieve data early, and how you
+ * checkpoint before a planned power-down.                             */
+static void cmdClose(void)
+{
+#if STORAGE_BACKEND == STORAGE_SERIAL
+  OBC_UART.println("<ERR no filesystem>");
+#else
+  if (rowsInFile == 0) {
+    OBC_UART.println("<ERR file empty>");
+    return;
+  }
+  char closed[24];
+  strncpy(closed, currentName + 1, sizeof(closed) - 1);
+  closed[sizeof(closed) - 1] = 0;
+  uint32_t rows = rowsInFile;
+
+  closeCurrentFile();
+  openNextFile();
+
+  OBC_UART.print("<CLOSED ");
+  OBC_UART.print(closed);
+  OBC_UART.print(' ');
+  OBC_UART.print(rows);
+  OBC_UART.println(">");
+#endif
+}
+
 static void executeCommand(char *line)
 {
   while (*line == ' ') line++;
@@ -770,6 +799,7 @@ static void executeCommand(char *line)
 
   if (strncmp(line, "LIST", 4)    == 0) { cmdList();            return; }
   if (strncmp(line, "STATUS", 6)  == 0) { cmdStatus();          return; }
+  if (strncmp(line, "CLOSE", 5)   == 0) { cmdClose();           return; }
   if (strncmp(line, "RESEND ", 7) == 0) { cmdResend(line + 7);  return; }
 
   OBC_UART.print("<ERR unknown ");
