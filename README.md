@@ -131,7 +131,12 @@ Monitor, or send over the RX line:
 |---|---|
 | `LIST` | `<LIST>` … names and sizes … `<ENDLIST>` |
 | `STATUS` | `<STATUS uptime=… files=… frames=… pruned=… free=… ring=…>` |
+| `CLOSE` | roll the current file early so it can be retrieved |
 | `RESEND 639_003600` | the stored file, in the same framing as a heartbeat |
+
+The open file cannot be resent — its length changes while streaming, so the byte
+count and CRC could never match. `CLOSE` rolls it, after which `RESEND` works.
+Without it the first retrievable file appears an hour in.
 
 `RESEND` is what makes the flash copy worth keeping. Without it the stored files
 are write-only and a corrupt or missed heartbeat is unrecoverable.

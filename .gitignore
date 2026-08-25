@@ -1,0 +1,20 @@
+# Arduino build artefacts
+build/
+*.elf
+*.bin.hex
+.vscode/
+.theia/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Receiver output
+received/
+tools/received/
+
+# OS
+.DS_Store
+Thumbs.db
