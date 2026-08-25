@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="330" viewBox="0 0 700 330">
+<title>SEED-P payload power distribution</title>
+<defs><marker id="p" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#000000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<style>
+  .bx  { fill:#cfdce8; stroke:#24455f; stroke-width:1.6; }
+  .bxp { fill:#d8cfe8; stroke:#42285f; stroke-width:1.6; }
+  .bxg { fill:#d8d8d8; stroke:#333333; stroke-width:1.6; }
+  .t   { font-family:ui-sans-serif,system-ui,sans-serif; font-size:13px; font-weight:700; fill:#000000; }
+  .s   { font-family:ui-sans-serif,system-ui,sans-serif; font-size:11px; font-weight:500; fill:#1f1f1f; }
+  .lbl { font-family:ui-sans-serif,system-ui,sans-serif; font-size:11px; font-weight:700; fill:#000000; letter-spacing:.06em; }
+  .rail{ font-family:ui-sans-serif,system-ui,sans-serif; font-size:11px; font-weight:700; fill:#000000; }
+  .ln  { stroke:#000000; stroke-width:1.8; fill:none; }
+</style>
+<rect x="0" y="0" width="700" height="330" fill="#ffffff"/>
+<text class="lbl" x="40" y="30">POWER DISTRIBUTION</text>
+<rect class="bxg" x="40" y="130" width="100" height="52" rx="8"/><text class="t" x="54" y="154">5 V bus</text><text class="s" x="54" y="171">from EPS</text>
+<path class="ln" d="M140 156 L165 156 L165 86 L186 86" marker-end="url(#p)"/>
+<path class="ln" d="M140 156 L165 156 L165 226 L186 226" marker-end="url(#p)"/>
+<rect class="bxg" x="190" y="60" width="115" height="52" rx="8"/><text class="t" x="204" y="84">TPS22918 A</text><text class="s" x="204" y="101">load switch</text>
+<rect class="bxp" x="190" y="200" width="115" height="52" rx="8"/><text class="t" x="204" y="224">TLV62569</text><text class="s" x="204" y="241">buck 5V to 3V3</text>
+<text class="rail" x="328" y="76" text-anchor="middle">5V_SW</text>
+<line class="ln" x1="305" y1="86" x2="351" y2="86" marker-end="url(#p)"/>
+<text class="rail" x="328" y="216" text-anchor="middle">3V3</text>
+<line class="ln" x1="305" y1="226" x2="351" y2="226" marker-end="url(#p)"/>
+<rect class="bx" x="355" y="60" width="140" height="52" rx="8"/><text class="t" x="369" y="84">Analog rail</text><text class="s" x="369" y="101">OPA388, ADS, REF</text>
+<rect class="bxg" x="355" y="200" width="115" height="52" rx="8"/><text class="t" x="369" y="224">TPS22918 B</text><text class="s" x="369" y="241">load switch</text>
+<text class="rail" x="492" y="216" text-anchor="middle">3V3_SW</text>
+<path class="ln" d="M470 226 L495 226 L495 196 L516 196" marker-end="url(#p)"/>
+<path class="ln" d="M470 226 L495 226 L495 266 L516 266" marker-end="url(#p)"/>
+<rect class="bx" x="520" y="170" width="140" height="52" rx="8"/><text class="t" x="534" y="194">TPS3430</text><text class="s" x="534" y="211">watchdog</text>
+<rect class="bx" x="520" y="240" width="140" height="52" rx="8"/><text class="t" x="534" y="264">ESP32-P4</text><text class="s" x="534" y="281">+ TMP117, memories</text>
+</svg>
