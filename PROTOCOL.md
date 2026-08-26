@@ -9,19 +9,23 @@ This document is the interface contract. If anything here changes, both
 
 ## 1. Frame
 
+The marker is `FRAME`, not `FILE`. What is transmitted is a 30-second frame of
+data assembled in RAM, not the hourly file stored on the payload. `RESEND` uses
+the same framing to return a stored file, so one marker covers both cases.
+
 ```
-<FILE 639_000030>\r\n
+<FRAME 639A_000030>\r\n
 <body>
-<END 639_000030 1707 A3F19C22>\r\n
+<END 639A_000030 1707 A3F19C22>\r\n
 ```
 
 | Element | Meaning |
 |---|---|
-| `<FILE name>` | start marker. `name` never contains `>` or whitespace |
+| `<FRAME name>` | start marker. `name` never contains `>` or whitespace |
 | body | the file contents, verbatim |
 | `<END name bytes crc>` | end marker, byte count and CRC32 of the body |
 
-**The body** is every byte between the newline that terminates the `<FILE>` line
+**The body** is every byte between the newline that terminates the `<FRAME>` line
 and the `<` of `<END`. It includes each row's own line terminator, including the
 last one.
 
@@ -56,21 +60,21 @@ init `0xFFFFFFFF`, final XOR `0xFFFFFFFF`. This is the standard zlib/PNG CRC32 �
 
 Reference: Python `zlib.crc32(body) & 0xFFFFFFFF`.
 
-Both must match, and `name` must be identical in the `<FILE>` and `<END>` lines.
+Both must match, and `name` must be identical in the `<FRAME>` and `<END>` lines.
 Any mismatch means the frame is corrupt and should be discarded.
 
 ---
 
 ## 4. Naming and sequence
 
-`639_SSSSSS` — the prefix `639_` identifies the payload; `SSSSSS` is the payload
+`639A_SSSSSS` — the prefix identifies the payload and unit; `SSSSSS` is the payload
 uptime in seconds at the moment the frame closes, zero-padded to six digits.
 
 **The name is the sequence number.** Consecutive heartbeats step by exactly
 `TX_PERIOD_S` (30). A larger step means beats were lost, and says which seconds:
 
 ```
-639_000060 -> 639_000120     one missed, seconds 60..89 are gone
+639A_000060 -> 639A_000120     one missed, seconds 60..89 are gone
 ```
 
 No separate sequence field exists, and none is needed.
@@ -121,6 +125,34 @@ payload.
 
 ---
 
+## 6b. Boot frame
+
+Sent once, within milliseconds of power-on, before the console wait and before
+the filesystem is mounted:
+
+```
+<BOOT id=639A_ fw=2 rate=1Hz tx=30s file=3600s>
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | Payload and unit prefix. `639` is the payload type; the trailing letter is the board — `A` flight, `B` spare, `E` engineering model |
+| `fw` | Wire format version |
+| `rate` | Sample rate |
+| `tx` | Heartbeat interval, seconds |
+| `file` | File rollover interval, seconds |
+
+**The OBC's restart-recovery procedure should watch for this line, not for the
+first data frame.** It arrives in milliseconds; the first data frame arrives at
+`tx` seconds. It also separates two failures: a boot frame followed by silence
+means the payload is running and its sampling loop is stuck, whereas nothing at
+all means it is not running.
+
+It is sent before storage is mounted, so it arrives even when the filesystem has
+failed.
+
+---
+
 ## 7. Commands (OBC → payload)
 
 One command per line, `\n` terminated. Replies are single lines except `LIST`
@@ -143,6 +175,16 @@ Errors:
 | `<ERR file empty>` | `CLOSE` with no rows written yet |
 | `<ERR cannot open NAME>` | filesystem refused the read |
 | `<ERR no filesystem>` | payload is running `STORAGE_SERIAL` |
+| `<ERR no storage>` | filesystem failed to mount; payload still sampling and transmitting |
+
+**A storage failure does not silence the payload.** If the filesystem fails to
+mount, `storageOk` is false: sampling, display and the 30 s heartbeat all
+continue, and only the on-board recovery buffer is lost. `STATUS` reports
+`storage=FAILED` so the ground knows the frames cannot be re-sent.
+
+This is deliberate. Silencing the payload would trigger the OBC's power-cycle
+recovery and eventually a latch-off — losing the whole payload because a
+filesystem would not mount.
 
 `RESEND` refuses the file currently being written because its length changes
 mid-stream and the CRC could never match.
@@ -155,7 +197,7 @@ which heartbeats continue.
 
 ## 8. Parser requirements
 
-1. Discard bytes until a line beginning `<FILE ` — a receiver that joins
+1. Discard bytes until a line beginning `<FRAME ` — a receiver that joins
    mid-frame must not report the partial as a failure.
 2. Do not buffer the body. A heartbeat is ~2 kB but a `RESEND` is ~230 kB. Feed
    bytes into a running CRC instead.

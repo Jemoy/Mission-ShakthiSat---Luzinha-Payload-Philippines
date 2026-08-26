@@ -30,10 +30,12 @@ a single-file edit.
 ```
 SensorLogger/          payload sketch
   SensorLogger.ino
+  CODE_WALKTHROUGH.md  how the firmware is put together, section by section
   src/                 six sensor drivers + shared types
     data/              PROGMEM replay tables (~170 kB)
-ObcReceiver/           OBC sketch: verifies frames, sends commands
+ObcReceiver/           OBC sketch: verifies frames, stores, sends commands
   ObcReceiver.ino
+  CODE_WALKTHROUGH.md  how the receiver is put together, section by section
 tools/
   obc_receiver.py      PC-side receiver, writes verified files to disk
   gen_pure.py          generates the 2 h dummy dataset
@@ -42,7 +44,12 @@ tools/
   make_drivers.py      converts CSVs into PROGMEM tables + drivers
 data/                  the generated CSVs and the driver truth reference
 docs/
+  MISSION_OVERVIEW.md  science objectives, targets, success criteria
+  DECISION_LOG.md      every design change, why, and the number behind it
   PROTOCOL.md          wire format specification
+  DATA_BUDGET.md       measured file sizes, storage duration, reduction options
+  SYSTEM_OVERVIEW.md   functional description, block diagrams, ConOps, modes, timeline
+  img/                 vector diagrams for use in formal documents
 ```
 
 ---
@@ -105,19 +112,23 @@ sketchbook and open the `.ino`. `Add .ZIP Library` will reject them.
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the full specification.
 
 ```
-<FILE 639_000030>
+<BOOT id=639A_ fw=2 rate=1Hz tx=30s file=3600s>
+<FRAME 639A_000030>
 sec,tmp0_C,tmp1_C,bpx65_a_V,...,psram,fram,eeprom
 0,-11.1,-8.7,0.0131,-0.0135,0.0058,-0.0106,0,0,2.56,1,1,5
   ... 30 rows ...
-<END 639_000030 1707 A3F19C22>
+<END 639A_000030 1807 04A9275A>
 ```
+
+`<BOOT>` is sent once at power-on, before storage is mounted, so the OBC learns
+of a restart within milliseconds rather than waiting a full heartbeat period.
 
 The `<END>` line carries the body's **byte count** and **CRC32** (poly
 `0xEDB88320`). They sit in the trailer rather than the header so the payload can
 stream the body in one pass instead of scanning it twice.
 
 The **filename is the sequence number**: names step by exactly 30, so a jump from
-`639_000060` to `639_000120` means one heartbeat was missed and says precisely
+`639A_000060` to `639A_000120` means one heartbeat was missed and says precisely
 which 30 seconds are gone. No separate sequence field is needed.
 
 ---
@@ -132,13 +143,57 @@ Monitor, or send over the RX line:
 | `LIST` | `<LIST>` … names and sizes … `<ENDLIST>` |
 | `STATUS` | `<STATUS uptime=… files=… frames=… pruned=… free=… ring=…>` |
 | `CLOSE` | roll the current file early so it can be retrieved |
-| `RESEND 639_003600` | the stored file, in the same framing as a heartbeat |
+| `RESEND 639A_003600` | the stored file, in the same framing as a heartbeat |
 
 The open file cannot be resent — its length changes while streaming, so the byte
 count and CRC could never match. `CLOSE` rolls it, after which `RESEND` works.
 Without it the first retrievable file appears an hour in.
 
-`RESEND` is what makes the flash copy worth keeping. Without it the stored files
+### OBC-side storage
+
+`ObcReceiver.ino` keeps its own copy of every **verified** frame on the OBC
+board's own LittleFS. A frame that fails its CRC is deleted rather than kept — a
+bad frame on disk is worse than no frame, because it looks like data.
+
+Local console commands (lowercase acts on the OBC, UPPERCASE goes to the payload):
+
+| Command | Effect |
+|---|---|
+| `ls` | stored files, sizes, disk usage |
+| `last` | print the newest stored file |
+| `cat <name>` | print a stored file |
+| `head <name> [n]` / `tail <name> [n]` | first / last n lines |
+| `cols <name>` | column names with indices, for `plot` |
+| `stats <name>` | min, max and mean of every column |
+| `plot <name> <col>` | ASCII chart of one column across the file |
+| `rm <name>` / `rm all` | delete |
+| `free` | free space |
+| `show off\|head\|all` | change the live frame display without reflashing |
+| `?` | receiver statistics |
+
+The file name may be omitted from `cat`, `head`, `tail`, `cols` and `stats` — the
+newest stored file is used, which is usually the one you want.
+
+Everything streams from flash a line at a time, so a 230 kB file costs the same
+RAM as a 2 kB one. `stats` is a single pass; `plot` needs two, one to find the
+range and one to bucket the rows.
+
+```
+> stats 639A_000600
+--- 639A_000600  30 rows ---
+  col  name             min       max      mean
+  [ 1] tmp0_C            1.300     2.000     1.647
+  [ 9] adr4525_V         2.560     2.560     2.560
+
+> plot 639A_003600 3
+--- 639A_003600  col 3 (bpx65_a_V)  0.214 .. 0.294  30 rows ---
+    0.29 |#
+    0.26 |###### ###
+    0.22 |##############################
+         +------------------------------
+```
+
+`RESEND` is what makes the payload's flash copy worth keeping. Without it the stored files
 are write-only and a corrupt or missed heartbeat is unrecoverable.
 
 ---
