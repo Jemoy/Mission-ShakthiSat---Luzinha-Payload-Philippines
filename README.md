@@ -33,6 +33,10 @@ SensorLogger/          payload sketch
   CODE_WALKTHROUGH.md  how the firmware is put together, section by section
   src/                 six sensor drivers + shared types
     data/              PROGMEM replay tables (~170 kB)
+UartBridge/            simplest OBC: copies bytes both ways, verifies nothing
+  UartBridge.ino       use this first to prove the wire works
+FrameReader/           short OBC: verifies frames and prints the values
+  FrameReader.ino      ~150 lines, no storage or commands
 ObcReceiver/           OBC sketch: verifies frames, stores, sends commands
   ObcReceiver.ino
   CODE_WALKTHROUGH.md  how the receiver is put together, section by section
@@ -44,6 +48,7 @@ tools/
   make_drivers.py      converts CSVs into PROGMEM tables + drivers
 data/                  the generated CSVs and the driver truth reference
 docs/
+  INTEGRATION_GUIDE.md how to write OBC software against this payload
   MISSION_OVERVIEW.md  science objectives, targets, success criteria
   DECISION_LOG.md      every design change, why, and the number behind it
   PROTOCOL.md          wire format specification
@@ -59,23 +64,59 @@ docs/
 Payload: **ESP32-P4** (any board with a spare hardware UART works for testing).
 OBC: a second board, or a PC with a USB-TTL adapter.
 
-| Payload | OBC |
+### Pins
+
+Both boards use the same two pins, which is why the wiring crosses.
+
+| | RX | TX |
+|---|---|---|
+| **Payload** (`SensorLogger`) | GPIO 16 | GPIO 17 |
+| **OBC** (`ObcReceiver`, `FrameReader`, `UartBridge`) | GPIO 16 | GPIO 17 |
+
+### Wiring
+
+```
+Payload GPIO 17 (TX) ---------> OBC GPIO 16 (RX)     data, every 30 s
+Payload GPIO 16 (RX) <--------- OBC GPIO 17 (TX)     commands only
+Payload GND          ---------- OBC GND              mandatory
+```
+
+**17 goes to 16, and 16 goes to 17.** Never 16 to 16 or 17 to 17 — that is one
+board's transmitter shouting at the other's transmitter, with nobody listening.
+
+| Wire | Carries | Needed? |
+|---|---|---|
+| Payload TX → OBC RX | Boot line, and a frame every 30 s | **Yes** |
+| Payload RX ← OBC TX | Commands you type | Only for `STATUS`, `LIST`, `CLOSE`, `RESEND` |
+| GND ↔ GND | The voltage reference | **Yes** |
+
+**Common ground is mandatory even when the boards are powered separately.** A
+UART signal is a voltage measured against ground; without a shared reference the
+receiver has nothing to compare against. Missing ground looks exactly like a
+software fault — nothing arrives, or intermittent garbage. Connect grounds only,
+never the supply rails.
+
+Both sides must be 3.3 V.
+
+### Changing the pins
+
+The pins are arbitrary. ESP32 UARTs are fully remappable.
+
+| Sketch | Defines to change |
 |---|---|
-| GPIO 17 (TX) → | → RX |
-| GPIO 16 (RX) ← | ← TX |
-| GND — | — GND |
+| `SensorLogger.ino` | `OBC_RX_PIN`, `OBC_TX_PIN` |
+| `ObcReceiver.ino`, `FrameReader.ino`, `UartBridge.ino` | `PAYLOAD_RX_PIN`, `PAYLOAD_TX_PIN` |
 
-TX crosses to RX. **Common ground is mandatory** — without a shared reference the
-signal has nothing to swing against and you get intermittent garbage that reads
-like a software bug. Both sides must be 3.3 V.
+They do not have to match between the two boards — the payload could use 4 and 5
+while the OBC uses 16 and 17. What matters is that the **wire** connects one
+board's TX to the other's RX.
 
-Only TX and GND are strictly required for the heartbeat, since the OBC does not
-acknowledge. Wire RX to use the commands.
+Avoid strapping pins and anything committed to flash or PSRAM on your module.
 
 > Check GPIO 16/17 against your P4 module's pinout first. Some P4 variants commit
 > those pins to the in-package PSRAM interface. If yours does, `Serial1`
 > initialises on unavailable pins, the console still prints `[SEND]` normally,
-> and nothing reaches the wire.
+> and nothing reaches the wire — a failure that looks like working software.
 
 ---
 
@@ -92,14 +133,31 @@ python3 obc_receiver.py --file ../data/example_capture.bin --out received/
 Serial Monitor at 115200. You should see the banner, then an aligned table of
 sensor values, one row per second, with `[SEND]` lines every 30 rows.
 
-**3. Payload + PC.** Connect a USB-TTL adapter's RX to payload GPIO 17 and GND to
-GND:
+**3. One board, no wiring at all.** Set `OBC_ON_USB 1` in `SensorLogger.ino` and
+the payload sends its frames down the USB cable instead of `Serial1`. No second
+board, no jumper, no spare GPIOs needed:
 
 ```bash
 python3 tools/obc_receiver.py --port /dev/ttyUSB0 --out received/
 ```
 
-**4. Payload + OBC board.** Flash `ObcReceiver/ObcReceiver.ino` to the second
+The table display is forced off in this mode so nothing lands inside a frame
+body. Event lines like `[SEND]` still appear between frames, and the receiver
+discards anything outside a frame.
+
+**4. Payload + PC over the real UART.** Connect a USB-TTL adapter's RX to payload
+GPIO 17 and GND to GND:
+
+```bash
+python3 tools/obc_receiver.py --port /dev/ttyUSB0 --out received/
+```
+
+**5. Payload + second board, wire test.** Flash `UartBridge/UartBridge.ino` to
+the second board. It copies bytes both ways and nothing else, so the Serial
+Monitor shows the raw frames exactly as sent. Use this to prove the wiring before
+adding anything that could itself be wrong.
+
+**6. Payload + OBC board.** Flash `ObcReceiver/ObcReceiver.ino` to the second
 board and wire as above.
 
 Both sketches are **sketches, not libraries** — unzip into your Arduino
@@ -109,7 +167,9 @@ sketchbook and open the `.ino`. `Add .ZIP Library` will reject them.
 
 ## Wire format
 
-See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the full specification.
+See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the specification, and
+[docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) if you are writing the OBC
+side.
 
 ```
 <BOOT id=639A_ fw=2 rate=1Hz tx=30s file=3600s>

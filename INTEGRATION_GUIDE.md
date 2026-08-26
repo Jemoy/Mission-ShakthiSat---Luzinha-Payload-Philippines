@@ -29,11 +29,27 @@ no radio.
 
 ## 2. Electrical
 
-| Payload | OBC |
-|---|---|
-| TX → | → RX |
-| RX ← | ← TX |
-| GND — | — GND |
+Both boards use the same two pins, which is why the wiring crosses.
+
+| | RX | TX |
+|---|---|---|
+| **Payload** | GPIO 16 | GPIO 17 |
+| **OBC** (our reference sketches) | GPIO 16 | GPIO 17 |
+
+```
+Payload GPIO 17 (TX) ---------> OBC RX      data, every 30 s
+Payload GPIO 16 (RX) <--------- OBC TX      commands only
+Payload GND          ---------- OBC GND     mandatory
+```
+
+**TX connects to RX, never TX to TX.** Your pin numbers are yours to choose; what
+matters is that the wire joins one board's transmitter to the other's receiver.
+
+| Wire | Carries | Needed? |
+|---|---|---|
+| Payload TX → your RX | Boot line, and a frame every 30 s | **Yes** |
+| Payload RX ← your TX | Commands | Only if you want `STATUS`, `LIST`, `CLOSE`, `RESEND` |
+| GND ↔ GND | The voltage reference | **Yes** |
 
 Both sides 3.3 V. **Common ground is mandatory even when the boards are powered
 separately** — a UART signal is a voltage measured against ground, and without a
@@ -43,8 +59,8 @@ intermittent garbage.
 
 Connect grounds only. Do not join the supply rails.
 
-You need only **RX and GND** to receive the heartbeat. Wire TX as well if you
-want to send commands.
+If our GPIO 16/17 do not suit your board, tell us and we will change the payload
+side — they are a `#define`, not a constraint.
 
 ---
 
